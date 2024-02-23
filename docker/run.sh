@@ -206,6 +206,7 @@ if [ $ARCH = "aarch64" ]; then
 		-v /etc/enctune.conf:/etc/enctune.conf \
 		-v /etc/nv_tegra_release:/etc/nv_tegra_release \
 		-v /tmp/nv_jetson_model:/tmp/nv_jetson_model \
+        -v /home/elephant/Documents/models/test:/home/elephant/Documents/models/test \
 		$DISPLAY_DEVICE $V4L2_DEVICES \
 		$DATA_VOLUME $USER_VOLUME $DEV_VOLUME \
 		$CONTAINER_IMAGE $USER_COMMAND
