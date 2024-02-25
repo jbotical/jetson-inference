@@ -31,11 +31,19 @@ import argparse
 import copy
 
 from jetson_inference import detectNet
-from jetson_utils import videoSource, videoOutput, Log
+from jetson_utils import videoSource, videoOutput, Log, cudaFont
 
 from pymycobot.mycobot import MyCobot
 import time
 import gc
+
+from config_service import ConfigService
+
+
+
+
+
+
 
 # parse the command line
 parser = argparse.ArgumentParser(description="Locate objects in a live camera stream using an object detection DNN.", 
@@ -74,6 +82,7 @@ class ArmState(Enum):
     Grasp = 1
     Deliver = 2
     Target = 3
+    Shutdown = 4
 
 def get_status():
     x = mc.get_servo_voltages()
@@ -87,76 +96,41 @@ def movement(commands: [], angles, speed=speed1):
     commands.append(("send_angles", (angles, speed)))
     return commands
 
+font = cudaFont()
+def update_messages(state, last_command_message, targeting_info, font, img):
+    font.OverlayText(img, 200, 100, f"{state.name}", 5, 5, font.White, font.Black)
+    font.OverlayText(img, 200, 100, targeting_info, 5, 42, font.White, font.Black)
+    font.OverlayText(img, 150, 75, last_command_message, 5, 78, font.White, font.Black)
+    font.OverlayText(img, 150, 75, raw_outputs_message, 5, 105, font.White, font.Black)
+
+
+def shut_down(mc):
+
+    main_angles = -58
+
+    mc.set_color(0, 250, 0)
+    time.sleep(0.5)
+    mc.set_gripper_state(0, 100)
+    time.sleep(0.5)
+    mc.send_angles([0,(main_angles),(main_angles),25,0,45],35)
+    time.sleep(3)
+    mc.power_off()
+    time.sleep(1)
+
+
 
 mc = MyCobot('/dev/ttyTHS1', 1000000)
 mc.power_on()
 time.sleep(0.1)
 
+config_service = ConfigService()
 
-
-search_commands = []
-search_commands.append(("set_color", (0,0,250)))
-
-movement(search_commands, [73.82, 22.06, -91.23, -12.3, -3.07, 31.55])
-movement(search_commands, [18.72, 10.45, -77.16, -15.55, 0.35, -30.41])
-movement(search_commands, [-50.18, 11.16, -78.04, -20.12, 2.98, -96.24])
-movement(search_commands, [-62.4, -34.54, -30.14, -21.88, 3.33, -106.43])
-movement(search_commands, [-36.56, -34.98, -29.79, -21.18, 3.6, -81.29])
-movement(search_commands, [7.64, -34.98, -30.23, -17.31, 2.02, -37.61])
-movement(search_commands, [52.99, -35.06, -30.23, -17.05, 1.14, 8.26])
-movement(search_commands, [89.82, -38.93, -29.97, -15.9, -6.85, 45.79])
-movement(search_commands, [81.73, 16.69, -95.71, -7.2, -1.58, 37.0])
-movement(search_commands, [27.24, 42.89, -122.34, -3.86, 0.43, -22.14])
-
-j = 0
-
-
-grasp_commands = []
-grasp_commands.append(("set_color", (250,0,0)))
-grasp_commands.append(("set_gripper_state", (0, 100)))
-grasp_commands.append(("get_coords", None))
-grasp_commands.append(("send_down", (30, 0)))
-grasp_commands.append(("set_gripper_state", (1, 100)))
-grasp_commands.append(("set_color", (0,250,0)))
-grasp_commands.append(("pick_up", (30, 0)))
-k = 0
-
-delivery_speed = 40
-
-deliver_commands = []
-deliver_commands.append(("set_color", (150,150,0)))
-deliver_commands.append(("send_angles", ([103.53, -15.55, -66.88, -2.72, -4.39, 59.32], delivery_speed)))
-deliver_commands.append(("send_angles", ([131.74, -26.27, -59.15, -2.98, -1.84, 83.58], delivery_speed)))
-deliver_commands.append(("set_gripper_state", (0, 100)))
-deliver_commands.append(("reset", ()))
-deliver_commands.append(("send_angles", ([103.53, -15.55, -66.88, -2.72, -4.39, 59.32], delivery_speed)))
-deliver_commands.append(("send_angles", ([60.38, -13.09, -57.56, -16.61, -2.37, 17.75], delivery_speed)))
-deliver_commands.append(("send_angles", ([2.9, -6.41, -45.79, -30.58, 6.67, -42.18], delivery_speed)))
-
-l = 0
-
-target_commands = []
-target_commands.append(("set_color", (150,0,150)))
-target_commands.append(("get_coords", (30, 0)))
-target_commands.append(("do_move", (30, 0)))
-m = 0
-
-detection_filter = {}
-detection_filter[90] = "toothbrush"
-detection_filter[44] = "bottle"
-#detection_filter[82] = "thing 1"
-detection_filter[16] = "thing 2"
-detection_filter[35] = "thing 3"
-detection_filter[61] = "thing 4"
-detection_filter[49] = "thing 5"
-detection_filter[48] = "thing 6"
-detection_filter[43] = "thing 7"
-detection_filter[87] = "thing 8"
-
-# custom dataset
-detection_filter[1] = "joey"
-detection_filter[2] = "kids"
-
+# Setup initial functionality
+search_commands, j, \
+    grasp_commands, k, \
+    deliver_commands, l, \
+    target_commands, m, \
+    detection_filter = config_service.setup_actions(speed1, ArmState, movement, mc)
 
 # start at the beginning
 mc.send_angles([7.47, -4.21, -65.74, -10.63, -2.98, -37.26], speed1)
@@ -174,6 +148,9 @@ y_offset = 0
 take_image = True
 
 last_command_message = ""
+targeting_info = ""
+centered_count = 0
+raw_outputs_message = ""
 
 while True:
     
@@ -181,13 +158,14 @@ while True:
 
     if img is None: # timeout
         continue  
-        
+
+    update_messages(state, last_command_message, targeting_info, font, img)
+
     # detect objects in the image (with overlay)
     detections = net.Detect(img, overlay=args.overlay)
     millis = int(round(time.time() * 1000))
     timeout_expired = millis > last_millis + slow_timer
-
-    
+   
 
     # Process state changes
     if state == ArmState.Search:
@@ -201,8 +179,8 @@ while True:
             elif command_name == "send_angles":
                 print(f"j = {j}")
                 mc.send_angles(params[0], params[1])
-                #mc.send_coords(params[0], params[1])
 
+            # index step counter
             if j < len(search_commands) - 1:
                 j = j + 1
             else:
@@ -236,67 +214,70 @@ while True:
 
 
                 if x < 575:
-                    last_command_message += "move right "
+                    y_message = "move right "
                     print("move right")
                     y_direction = 1
                     y_offset = 20
                 elif x > 875:
-                    last_command_message += "move left "
+                #elif x > 860:
+                    y_message = "move left "
                     y_direction = -1
                     y_offset = -60
                 else:
-                    last_command_message += "y is centered "
+                    y_message = "y is centered "
                     y_direction = 0
                     y_offset = 0
 
                 if y < 250:
                     x_direction = -1
-                    last_command_message += "move down "
+                    x_message = "move down "
                     x_offset = 50
                 elif y > 450:
-                    last_command_message += "move up "
+                    x_message = "move up "
                     x_direction = 1
                     x_offset = -20
                 else:
-                    last_command_message += "x is centered "
+                    x_message = "x is centered "
                     x_direction = 0
                     x_offset = 0
 
-                print(f"do_move: x: {x} y: {y} x_direction: {x_direction} y_direction: {y_direction} coords: {coords}")
+                last_command_message = f"{x_message} {y_message}"
+
+                detail_message = f"do_move: x: {x} y: {y} x_direction: {x_direction} y_direction: {y_direction} coords: {coords}"
+                print(detail_message)
+                last_command_message = detail_message
+
                 print(f"detected_Coors: {detected_coords}")
                 new_coords = copy.deepcopy(coords)
 
-                # # Prevent going outside bounds
-                # if coords[1] < -240 or coords[1] < detected_coords[1] - 100:
-                #     print("reached lower Y bounds")
-                #     state = ArmState.Search
-                # elif coords[1] > 240 or coords[1] < detected_coords[1] + 100:
-                #     print("reached upper Y bounds")
-                #     state = ArmState.Search
+                if not (detected_coords is None):
+                    x = detected_coords[0]
+                    y = detected_coords[1]
+                    detected_coords[0] = x + x_offset
+                    detected_coords[1] = y + y_offset
+                    #targeting_info = f"target: ({detected_coords[0]},{detected_coords[1]})"
+                    targeting_info = f"offsets: ({x_offset}, {y_offset})"
+                    raw_outputs_message = ""
+                    for coord in detected_coords:
+                        raw_outputs_message += f"{coord} | "
+                    try:
 
-                
-                # # Determine new coordinates based on target data
-                # if y_direction == 1: # move right
-                #     new_coords[1] = coords[1] +  20 # y
+                        mc.send_coords(detected_coords, params[0], params[1])
+                    except Exception as e:
+                        print(f"Error occured: {e}")
+                    
+                    if x_direction == 0 and y_direction == 0:
+                        centered_count += 1
 
-                # elif y_direction == -1: # move left
-                #     new_coords[1] = coords[1] - 20 # y
+                        if centered_count > 2:
+                            state = ArmState.Grasp
+                            centered_count = 0
+                    else:
+                        center_count = 0
+                else:
+                    print("nothing was found, no move happened..")
 
-                # mc.send_coords(new_coords, params[0], params[1])
-                ##del new_coords
-
-                if not detected_coords is None:
-                    detected_coords[0] = detected_coords[0] + x_offset
-                    detected_coords[1] = detected_coords[1] + y_offset
-
-                    mc.send_coords(detected_coords, params[0], params[1])
-                    state = ArmState.Grasp
-
-            # if x_direction == 0 and y_direction == 0 and detection is not None:
-            #     print("locked on target, going to Grasp state")
-            #     state = ArmState.Grasp
-
-
+            # index step counter
             if m < len(target_commands) - 1:
                 m = m + 1
             else:
@@ -322,7 +303,7 @@ while True:
                 #new_coords = copy.deepcopy(detected_coords)
                 new_coords[0] = new_coords[0] + 5
                 new_coords[1] = new_coords[1] - 10 # y
-                new_coords[2] = 110 # z
+                new_coords[2] = 120 # z
                 new_coords[3] = -180
                 new_coords[4] = -4
                 new_coords[5] = -48
@@ -372,6 +353,7 @@ while True:
                 coords = mc.get_coords()   
             if command_name == "reset":
                 last_command_message = ""
+                targeting_info = ""
 
             if l < len(deliver_commands) - 1:
                 l = l + 1
@@ -411,4 +393,11 @@ while True:
 
     # exit on input/output EOS
     if not input.IsStreaming() or not output.IsStreaming():
+        state = ArmState.Shutdown
+        img = input.Capture()
+        update_messages(state, last_command_message, targeting_info, font, img)
+        time.sleep(0.5)
+        # render the image
+        output.Render(img)
+        shut_down(mc)
         break
