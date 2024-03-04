@@ -41,7 +41,7 @@ class ConfigService():
         deliver_commands.append(("reset", ()))
         deliver_commands.append(("send_angles", ([103.53, -15.55, -66.88, -2.72, -4.39, 59.32], delivery_speed)))
         deliver_commands.append(("send_angles", ([60.38, -13.09, -57.56, -16.61, -2.37, 17.75], delivery_speed)))
-        deliver_commands.append(("send_angles", ([2.9, -6.41, -45.79, -30.58, 6.67, -42.18], delivery_speed)))
+        deliver_commands.append(("send_angles", ([-2.9, -6.41, -45.79, -30.58, 6.67, -42.18], delivery_speed)))
 
         l = 0
 

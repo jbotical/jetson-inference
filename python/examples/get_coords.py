@@ -24,6 +24,9 @@ while True:
     mc.set_color(250, 0, 0)
     time.sleep(1)
 
+    mc.set_gripper_state(1, 100)
+    time.sleep(1)
+
     while coords is None:
         coords = mc.get_coords()
         time.sleep(.5)

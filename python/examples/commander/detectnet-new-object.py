@@ -71,7 +71,7 @@ output = videoOutput(args.output, argv=sys.argv)
 net = detectNet(args.network, sys.argv, args.threshold)
 
 speed1 = 25
-slow_timer = 150
+slow_timer = 10
 
 vert_0 = -180
 vert_1 = 1
@@ -102,6 +102,9 @@ def update_messages(state, last_command_message, targeting_info, font, img):
     font.OverlayText(img, 200, 100, targeting_info, 5, 42, font.White, font.Black)
     font.OverlayText(img, 150, 75, last_command_message, 5, 78, font.White, font.Black)
     font.OverlayText(img, 150, 75, raw_outputs_message, 5, 105, font.White, font.Black)
+
+    if not current_target is None:
+        font.OverlayText(img, 150, 75, current_target, 5, 135, font.White, font.Black)
 
 
 def shut_down(mc):
@@ -151,6 +154,9 @@ last_command_message = ""
 targeting_info = ""
 centered_count = 0
 raw_outputs_message = ""
+current_target = None
+paused_count_seconds = 0
+paused_count_seconds_max = 3
 
 while True:
     
@@ -217,12 +223,12 @@ while True:
                     y_message = "move right "
                     print("move right")
                     y_direction = 1
-                    y_offset = 20
-                elif x > 875:
-                #elif x > 860:
+                    y_offset = 10
+                #elif x > 875:
+                elif x > 810:
                     y_message = "move left "
                     y_direction = -1
-                    y_offset = -60
+                    y_offset = -20
                 else:
                     y_message = "y is centered "
                     y_direction = 0
@@ -231,11 +237,11 @@ while True:
                 if y < 250:
                     x_direction = -1
                     x_message = "move down "
-                    x_offset = 50
+                    x_offset = 10
                 elif y > 450:
                     x_message = "move up "
                     x_direction = 1
-                    x_offset = -20
+                    x_offset = -10
                 else:
                     x_message = "x is centered "
                     x_direction = 0
@@ -243,26 +249,41 @@ while True:
 
                 last_command_message = f"{x_message} {y_message}"
 
-                detail_message = f"do_move: x: {x} y: {y} x_direction: {x_direction} y_direction: {y_direction} coords: {coords}"
-                print(detail_message)
-                last_command_message = detail_message
+                #detail_message = f"do_move: x: {x} y: {y} x_direction: {x_direction} y_direction: {y_direction} coords: {coords}"
+                #print(detail_message)
+                #last_command_message = detail_message
 
                 print(f"detected_Coors: {detected_coords}")
                 new_coords = copy.deepcopy(coords)
 
                 if not (detected_coords is None):
-                    x = detected_coords[0]
-                    y = detected_coords[1]
-                    detected_coords[0] = x + x_offset
-                    detected_coords[1] = y + y_offset
-                    #targeting_info = f"target: ({detected_coords[0]},{detected_coords[1]})"
+                    new_x = detected_coords[0] + x_offset
+                    new_y = detected_coords[1] + y_offset
+
+                    move = False
+
+                    if new_x > 100 and new_x < 210 \
+                        and new_y > -160 and new_y < 170:
+                            detected_coords[0] = new_x
+                            detected_coords[1] = new_y
+
+                            move = True
+                    else:
+                        state = ArmState.Search
+
+
+                    # detected_coords[0] = detected_coords[0] + x_offset
+                    # detected_coords[1] = detected_coords[1] + y_offset
                     targeting_info = f"offsets: ({x_offset}, {y_offset})"
+
                     raw_outputs_message = ""
+
                     for coord in detected_coords:
                         raw_outputs_message += f"{coord} | "
-                    try:
 
-                        mc.send_coords(detected_coords, params[0], params[1])
+                    try:
+                        if move:
+                            mc.send_coords(detected_coords, params[0], params[1])
                     except Exception as e:
                         print(f"Error occured: {e}")
                     
@@ -303,7 +324,7 @@ while True:
                 #new_coords = copy.deepcopy(detected_coords)
                 new_coords[0] = new_coords[0] + 5
                 new_coords[1] = new_coords[1] - 10 # y
-                new_coords[2] = 120 # z
+                new_coords[2] = 115 # z
                 new_coords[3] = -180
                 new_coords[4] = -4
                 new_coords[5] = -48
@@ -354,6 +375,8 @@ while True:
             if command_name == "reset":
                 last_command_message = ""
                 targeting_info = ""
+                raw_outputs_message = ""
+                current_target = None
 
             if l < len(deliver_commands) - 1:
                 l = l + 1
@@ -376,6 +399,7 @@ while True:
             take_image = False
             detected_coords = mc.get_coords()
             print(f"--------> found a thing with id: {detected_class_id} named {name}!! ")
+            current_target = f"{name} - {detected_class_id} - ({detected_coords[0], detected_coords[1]})"
             
             state = ArmState.Target
             
