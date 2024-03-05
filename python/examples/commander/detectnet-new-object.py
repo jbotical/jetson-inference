@@ -157,6 +157,9 @@ raw_outputs_message = ""
 current_target = None
 paused_count_seconds = 0
 paused_count_seconds_max = 3
+action_time_counter = 0
+pick_up_override = False
+target_override = False
 
 while True:
     
@@ -199,7 +202,7 @@ while True:
 
     elif state == ArmState.Target:
         
-        if not mc.is_moving() and not mc.is_gripper_moving() and timeout_expired:
+        if (not mc.is_moving() and not mc.is_gripper_moving() and timeout_expired) or target_override:
             last_millis = millis
             
             x_direction = -1
@@ -214,10 +217,8 @@ while True:
                 mc.set_color(params[0], params[1], params[2])
 
             elif command_name == "do_move":
-                
                 # targeting
                 x, y = detection.Center
-
 
                 if x < 575:
                     y_message = "move right "
@@ -249,10 +250,6 @@ while True:
 
                 last_command_message = f"{x_message} {y_message}"
 
-                #detail_message = f"do_move: x: {x} y: {y} x_direction: {x_direction} y_direction: {y_direction} coords: {coords}"
-                #print(detail_message)
-                #last_command_message = detail_message
-
                 print(f"detected_Coors: {detected_coords}")
                 new_coords = copy.deepcopy(coords)
 
@@ -270,10 +267,8 @@ while True:
                             move = True
                     else:
                         state = ArmState.Search
+                        raw_outputs_message = "Out of operating bounds!"
 
-
-                    # detected_coords[0] = detected_coords[0] + x_offset
-                    # detected_coords[1] = detected_coords[1] + y_offset
                     targeting_info = f"offsets: ({x_offset}, {y_offset})"
 
                     raw_outputs_message = ""
@@ -293,6 +288,7 @@ while True:
                         if centered_count > 2:
                             state = ArmState.Grasp
                             centered_count = 0
+                            action_time_counter = 0
                     else:
                         center_count = 0
                 else:
@@ -303,10 +299,16 @@ while True:
                 m = m + 1
             else:
                 m = 0
-            
+        else:
+            action_time_counter += 1
+            raw_outputs_message = f"TARGET action_time_counter: {action_time_counter}"
+            if action_time_counter >= 30:
+                state = ArmState.Search
+                target_override = True
+               
 
     elif state == ArmState.Grasp:
-        if not mc.is_moving() and not mc.is_gripper_moving() and timeout_expired:
+        if (not mc.is_moving() and not mc.is_gripper_moving() and timeout_expired) or pick_up_override:
             last_millis = millis
             command_name, params = grasp_commands[k]
             
@@ -324,7 +326,7 @@ while True:
                 #new_coords = copy.deepcopy(detected_coords)
                 new_coords[0] = new_coords[0] + 5
                 new_coords[1] = new_coords[1] - 10 # y
-                new_coords[2] = 115 # z
+                new_coords[2] = 110 # z
                 new_coords[3] = -180
                 new_coords[4] = -4
                 new_coords[5] = -48
@@ -333,6 +335,7 @@ while True:
 
             elif command_name == "pick_up":
                 mc.send_coords(coords, params[0], params[1])
+                pick_up_override = False
 
             elif command_name == "set_gripper_state":
                 mc.set_gripper_state(params[0], params[1])
@@ -358,6 +361,11 @@ while True:
             else:
                 k = 0
                 state = ArmState.Deliver
+        else:
+            action_time_counter += 1
+            raw_outputs_message = f"GRASP action_time_counter: {action_time_counter}"
+            if action_time_counter >= 30:
+                pick_up_override = True
 
     elif state == ArmState.Deliver:
         if not mc.is_moving() and not mc.is_gripper_moving() and timeout_expired:
@@ -377,6 +385,9 @@ while True:
                 targeting_info = ""
                 raw_outputs_message = ""
                 current_target = None
+                action_time_counter = 0
+                target_override = False
+                
 
             if l < len(deliver_commands) - 1:
                 l = l + 1
