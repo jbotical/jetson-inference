@@ -70,7 +70,7 @@ output = videoOutput(args.output, argv=sys.argv)
 # load the object detection network
 net = detectNet(args.network, sys.argv, args.threshold)
 
-speed1 = 25
+speed1 = 45
 slow_timer = 10
 
 vert_0 = -180
@@ -252,7 +252,7 @@ while True:
 
                 print(f"detected_Coors: {detected_coords}")
                 new_coords = copy.deepcopy(coords)
-
+                is_forced_search: bool = False
                 if not (detected_coords is None):
                     new_x = detected_coords[0] + x_offset
                     new_y = detected_coords[1] + y_offset
@@ -265,9 +265,10 @@ while True:
                             detected_coords[1] = new_y
 
                             move = True
+                            last_command_message = "Moving.."
                     else:
-                        state = ArmState.Search
-                        raw_outputs_message = "Out of operating bounds!"
+                        is_forced_search = True
+                        last_command_message = "Out of operating bounds!"
 
                     targeting_info = f"offsets: ({x_offset}, {y_offset})"
 
@@ -291,8 +292,11 @@ while True:
                             action_time_counter = 0
                     else:
                         center_count = 0
+
+                    if is_forced_search:
+                        state = ArmState.Search
                 else:
-                    print("nothing was found, no move happened..")
+                    last_command_message = "nothing was found, no move happened.."
 
             # index step counter
             if m < len(target_commands) - 1:
@@ -409,10 +413,12 @@ while True:
         if name is not None and state == ArmState.Search:
             take_image = False
             detected_coords = mc.get_coords()
-            print(f"--------> found a thing with id: {detected_class_id} named {name}!! ")
-            current_target = f"{name} - {detected_class_id} - ({detected_coords[0], detected_coords[1]})"
             
-            state = ArmState.Target
+            if not detected_coords is None:
+                print(f"--------> found a thing with id: {detected_class_id} named {name}!! ")
+                current_target = f"{name} - {detected_class_id} - ({detected_coords[0], detected_coords[1]})"
+                
+                state = ArmState.Target
             
             
 
