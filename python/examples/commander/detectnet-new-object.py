@@ -103,8 +103,8 @@ def update_messages(state, last_command_message, targeting_info, font, img):
     font.OverlayText(img, 150, 75, last_command_message, 5, 78, font.White, font.Black)
     font.OverlayText(img, 150, 75, raw_outputs_message, 5, 105, font.White, font.Black)
 
-    if not current_target is None:
-        font.OverlayText(img, 150, 75, current_target, 5, 135, font.White, font.Black)
+    if not current_target_description is None:
+        font.OverlayText(img, 150, 75, current_target_description, 5, 135, font.White, font.Black)
 
 
 def shut_down(mc):
@@ -154,7 +154,8 @@ last_command_message = ""
 targeting_info = ""
 centered_count = 0
 raw_outputs_message = ""
-current_target = None
+current_target_description = None
+currnet_target_name = None
 paused_count_seconds = 0
 paused_count_seconds_max = 3
 action_time_counter = 0
@@ -253,21 +254,27 @@ while True:
                 print(f"detected_Coors: {detected_coords}")
                 new_coords = copy.deepcopy(coords)
                 is_forced_search: bool = False
+
+                # if it was found
                 if not (detected_coords is None):
                     new_x = detected_coords[0] + x_offset
                     new_y = detected_coords[1] + y_offset
+                    angle_3 = detected_coords[3] + 1        # offset to account for drift
 
                     move = False
 
                     if new_x > 100 and new_x < 210 \
-                        and new_y > -160 and new_y < 170:
+                        and new_y > -170 and new_y < 170:
                             detected_coords[0] = new_x
                             detected_coords[1] = new_y
+                            detected_coords[3] = angle_3
 
                             move = True
                             last_command_message = "Moving.."
                     else:
                         is_forced_search = True
+                        detected_coords[3] = angle_3 + 2
+                        move = True
                         last_command_message = "Out of operating bounds!"
 
                     targeting_info = f"offsets: ({x_offset}, {y_offset})"
@@ -306,7 +313,7 @@ while True:
         else:
             action_time_counter += 1
             raw_outputs_message = f"TARGET action_time_counter: {action_time_counter}"
-            if action_time_counter >= 30:
+            if action_time_counter >= 41:
                 state = ArmState.Search
                 target_override = True
                
@@ -368,7 +375,7 @@ while True:
         else:
             action_time_counter += 1
             raw_outputs_message = f"GRASP action_time_counter: {action_time_counter}"
-            if action_time_counter >= 30:
+            if action_time_counter >= 40:
                 pick_up_override = True
 
     elif state == ArmState.Deliver:
@@ -388,7 +395,8 @@ while True:
                 last_command_message = ""
                 targeting_info = ""
                 raw_outputs_message = ""
-                current_target = None
+                current_target_description = None
+                current_target_name = None
                 action_time_counter = 0
                 target_override = False
                 
@@ -416,8 +424,8 @@ while True:
             
             if not detected_coords is None:
                 print(f"--------> found a thing with id: {detected_class_id} named {name}!! ")
-                current_target = f"{name} - {detected_class_id} - ({detected_coords[0], detected_coords[1]})"
-                
+                current_target_description = f"{name} - {detected_class_id} - ({detected_coords[0], detected_coords[1]})"
+                current_target_name = name
                 state = ArmState.Target
             
             

@@ -201,6 +201,7 @@ if [ $ARCH = "aarch64" ]; then
 	cat /proc/device-tree/model > /tmp/nv_jetson_model
 
 	sudo docker run --runtime nvidia -it --rm \
+		--privileged \
 		--network host \
 		-v /tmp/argus_socket:/tmp/argus_socket \
 		-v /etc/enctune.conf:/etc/enctune.conf \
@@ -209,7 +210,7 @@ if [ $ARCH = "aarch64" ]; then
         -v /home/elephant/Documents/models/test:/home/elephant/Documents/models/test \
 		$DISPLAY_DEVICE $V4L2_DEVICES \
 		$DATA_VOLUME $USER_VOLUME $DEV_VOLUME \
-		$CONTAINER_IMAGE $USER_COMMAND
+		$CONTAINER_IMAGE $USER_COMMAND \
 
 elif [ $ARCH = "x86_64" ]; then
 
