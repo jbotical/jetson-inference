@@ -161,6 +161,9 @@ paused_count_seconds_max = 3
 action_time_counter = 0
 pick_up_override = False
 target_override = False
+out_of_bounds_counter = 0
+deliver_angle_0_joey = 135
+deliver_angle_0_kids = 125
 
 while True:
     
@@ -175,11 +178,39 @@ while True:
     detections = net.Detect(img, overlay=args.overlay)
     millis = int(round(time.time() * 1000))
     timeout_expired = millis > last_millis + slow_timer
+    detected_class_id = None
+    for detection in detections:
+        print(detection)
+        if state not in (ArmState.Grasp, ArmState.Deliver):
+            print(f"item classID: {detection.ClassID} center: {detection.Center}")
+
+        detected_class_id = detection.ClassID
+        
+        name = detection_filter.get(detected_class_id)
+        motion_stopped = not mc.is_moving() and not mc.is_gripper_moving()
+        if True and timeout_expired:
+            if name is not None and state == ArmState.Search:
+                take_image = False
+                detected_coords = mc.get_coords()
+                
+                if not detected_coords is None:
+                    print(f"--------> found a thing with id: {detected_class_id} named {name}!! ")
+                    current_target_description = f"{name} - {detected_class_id} - ({detected_coords[0], detected_coords[1]})"
+                    current_target_name = name
+                    if name == "kids":
+                        config_service.set_deliver_angle(150)
+                    else:
+                        config_service.set_deliver_angle(110)
+                    deliver_commands = config_service.set_deliver_commands()
+                    state = ArmState.Target
+
    
 
     # Process state changes
     if state == ArmState.Search:
         if not mc.is_moving() and not mc.is_gripper_moving() and timeout_expired:
+            targeting_info = ""
+
             last_millis = millis
 
             command_name, params = search_commands[j]
@@ -222,15 +253,14 @@ while True:
                 x, y = detection.Center
 
                 if x < 575:
-                    y_message = "move right "
-                    print("move right")
+                    y_message = f"x: {int(x)} move right "
                     y_direction = 1
-                    y_offset = 10
+                    y_offset = 15
                 #elif x > 875:
                 elif x > 810:
-                    y_message = "move left "
+                    y_message = f"x: {x} move left "
                     y_direction = -1
-                    y_offset = -20
+                    y_offset = -30
                 else:
                     y_message = "y is centered "
                     y_direction = 0
@@ -238,10 +268,10 @@ while True:
 
                 if y < 250:
                     x_direction = -1
-                    x_message = "move down "
-                    x_offset = 10
+                    x_message = f"y: {y} move down "
+                    x_offset = 30
                 elif y > 450:
-                    x_message = "move up "
+                    x_message = f"y: {y} move up "
                     x_direction = 1
                     x_offset = -10
                 else:
@@ -249,7 +279,7 @@ while True:
                     x_direction = 0
                     x_offset = 0
 
-                last_command_message = f"{x_message} {y_message}"
+                new_direction_message = f"{x_message} {y_message}"
 
                 print(f"detected_Coors: {detected_coords}")
                 new_coords = copy.deepcopy(coords)
@@ -259,25 +289,57 @@ while True:
                 if not (detected_coords is None):
                     new_x = detected_coords[0] + x_offset
                     new_y = detected_coords[1] + y_offset
-                    angle_3 = detected_coords[3] + 1        # offset to account for drift
-
+                    
                     move = False
 
                     if new_x > 100 and new_x < 210 \
-                        and new_y > -170 and new_y < 170:
+                        and new_y > -240 and new_y < 250:
                             detected_coords[0] = new_x
                             detected_coords[1] = new_y
-                            detected_coords[3] = angle_3
+                            drift_offset = 2
 
                             move = True
                             last_command_message = "Moving.."
                     else:
-                        is_forced_search = True
-                        detected_coords[3] = angle_3 + 2
-                        move = True
-                        last_command_message = "Out of operating bounds!"
+                        #is_forced_search = True
 
-                    targeting_info = f"offsets: ({x_offset}, {y_offset})"
+                        # leveled coords to prevent drift
+                        level_x = new_x
+                        level_y = new_y
+                        #level_z = detected_coords[2]
+                        level_z = 200
+                        level_coords = [ level_x, level_y, level_z, -180, 0, -45 ]
+                        last_command_message = f"Out of operating bounds! level: {str(level_coords)} count: {out_of_bounds_counter}"
+
+                        drift_offset = 2
+
+                        #detected_coords = level_coords
+                        #mc.send_coords(detected_coords, params[0], params[1])
+                        #time.sleep(0.5)
+
+
+                        # have it look over and see if it fixes the bounds issue
+                        #detected_coords[3] = angle_3 + 1
+
+
+
+                        move = True
+                        out_of_bounds_counter += 1
+                        if out_of_bounds_counter > 8:
+                            state = ArmState.Grasp
+                            centered_count = 0
+                            action_time_counter = 0
+
+                        #-180, 0 -45
+
+                    # apply corrections
+                    r_x = detected_coords[3] + drift_offset       # offset to account for drift
+                    r_y = detected_coords[4] + drift_offset
+                    detected_coords[3] = r_x
+                    detected_coords[4] = r_y
+
+
+                    targeting_info = f"new target: ({detected_coords[0]}, {detected_coords[1]}; {new_direction_message})"
 
                     raw_outputs_message = ""
 
@@ -313,7 +375,7 @@ while True:
         else:
             action_time_counter += 1
             raw_outputs_message = f"TARGET action_time_counter: {action_time_counter}"
-            if action_time_counter >= 41:
+            if action_time_counter >= 51:
                 state = ArmState.Search
                 target_override = True
                
@@ -337,7 +399,13 @@ while True:
                 #new_coords = copy.deepcopy(detected_coords)
                 new_coords[0] = new_coords[0] + 5
                 new_coords[1] = new_coords[1] - 10 # y
-                new_coords[2] = 110 # z
+
+                z_adder = 0
+                x = new_coords[0]
+                if x > 190:
+                    z_adder = 5
+
+                new_coords[2] = 110 + z_adder # z
                 new_coords[3] = -180
                 new_coords[4] = -4
                 new_coords[5] = -48
@@ -399,6 +467,7 @@ while True:
                 current_target_name = None
                 action_time_counter = 0
                 target_override = False
+                out_of_bounds_counter = 0
                 
 
             if l < len(deliver_commands) - 1:
@@ -408,27 +477,6 @@ while True:
                 take_image = True
                 state = ArmState.Search
 
-
-    detected_class_id = None
-    for detection in detections:
-        print(detection)
-        if state not in (ArmState.Grasp, ArmState.Deliver):
-            print(f"item classID: {detection.ClassID} center: {detection.Center}")
-
-        detected_class_id = detection.ClassID
-        
-        name = detection_filter.get(detected_class_id)
-        if name is not None and state == ArmState.Search:
-            take_image = False
-            detected_coords = mc.get_coords()
-            
-            if not detected_coords is None:
-                print(f"--------> found a thing with id: {detected_class_id} named {name}!! ")
-                current_target_description = f"{name} - {detected_class_id} - ({detected_coords[0], detected_coords[1]})"
-                current_target_name = name
-                state = ArmState.Target
-            
-            
 
 
     # render the image

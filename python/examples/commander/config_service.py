@@ -1,7 +1,10 @@
 class ConfigService():
     def __init__(self):
         pass
+        self._deliver_0_angle = 131
 
+    def set_deliver_angle(self, angle):
+        self._deliver_0_angle = angle
 
     def setup_actions(self, speed1, ArmState, movement, mc):
         search_commands = []
@@ -31,23 +34,7 @@ class ConfigService():
         grasp_commands.append(("pick_up", (30, 0)))
         k = 0
 
-        delivery_speed = 40
-
-        deliver_commands = []
-        move_angle = 60
-        deliver_commands.append(("set_color", (150,150,0)))
-        deliver_commands.append(("send_angles", ([103.53, -15.55, -66.88, move_angle, -4.39, 59.32], delivery_speed)))
-
-        # twist so that the stuff falls out!
-        deliver_commands.append(("send_angles", ([131.74, -26.27, -59.15, move_angle, -1.84, 50], delivery_speed)))
-        deliver_commands.append(("set_gripper_state", (0, 100)))
-        # Twist to get everything out
-        deliver_commands.append(("send_angles", ([131.74, -26.27, -59.15, move_angle, -1.84, 100], 100)))
-        deliver_commands.append(("send_angles", ([131.74, -26.27, -59.15, move_angle, -1.84, -20], 100)))
-        deliver_commands.append(("reset", ()))
-        deliver_commands.append(("send_angles", ([103.53, -15.55, -66.88, move_angle, -4.39, 59.32], delivery_speed)))
-        deliver_commands.append(("send_angles", ([60.38, -13.09, -57.56, -16.61, -2.37, 17.75], delivery_speed)))
-        deliver_commands.append(("send_angles", ([-2.9, -6.41, -45.79, -30.58, 6.67, -42.18], delivery_speed)))
+        deliver_commands = self.set_deliver_commands()
 
         l = 0
 
@@ -76,6 +63,26 @@ class ConfigService():
 
 
         return search_commands,j,grasp_commands,k,deliver_commands,l,target_commands,m,detection_filter
+
+    def set_deliver_commands(self):
+        delivery_speed = 40
+
+        deliver_commands = []
+        move_angle = 60
+        deliver_commands.append(("set_color", (150,150,0)))
+        deliver_commands.append(("send_angles", ([103.53, -15.55, -66.88, move_angle, -4.39, 59.32], delivery_speed)))
+
+        # twist so that the stuff falls out!
+        deliver_commands.append(("send_angles", ([self._deliver_0_angle, -26.27, -59.15, move_angle, -1.84, 50], delivery_speed)))
+        deliver_commands.append(("set_gripper_state", (0, 100)))
+        # Twist to get everything out
+        deliver_commands.append(("send_angles", ([self._deliver_0_angle, -26.27, -59.15, move_angle, -1.84, -20], 100)))
+        deliver_commands.append(("send_angles", ([self._deliver_0_angle, -26.27, -59.15, move_angle, -1.84, 100], 100)))
+        deliver_commands.append(("reset", ()))
+        deliver_commands.append(("send_angles", ([103.53, -15.55, -66.88, move_angle, -4.39, 59.32], delivery_speed)))
+        deliver_commands.append(("send_angles", ([60.38, -13.09, -57.56, -16.61, -2.37, 17.75], delivery_speed)))
+        deliver_commands.append(("send_angles", ([-2.9, -6.41, -45.79, -30.58, 6.67, -42.18], delivery_speed)))
+        return deliver_commands
 
 
 
